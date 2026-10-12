@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <!-- ป้องกันการซูมด้วยนิ้วบนมือถือเพื่อให้ double-tap ทำงานได้ดีที่สุด -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>BNK48 Digital Cheer Board</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;700&family=Chonburi&family=Itim&family=Kanit:wght@400;600;900&family=Mali:wght@400;700&family=Prompt:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden; 
+            background-color: #000;
+            touch-action: none; /* ป้องกันการ Swipe เพื่อประสบการณ์ Fullscreen ที่ดี */
+        }
+
+        #board-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            background-color: #000000;
+            transition: background-color 0.3s;
+        }
+
+        #cheer-text {
+            /* เริ่มต้นที่ 25vh จะถูกเขียนทับด้วย JS */
+            font-size: 25vh;
+            font-weight: 900;
+            white-space: nowrap;
+            position: absolute;
+            will-change: transform;
+            /* แกนกลางสีขาว สว่างด้วยสีของ neon-color */
+            color: #ffffff;
+            text-shadow: 
+                0 0 5px #fff,
+                0 0 10px var(--neon-color),
+                0 0 20px var(--neon-color),
+                0 0 40px var(--neon-color),
+                0 0 60px var(--neon-color);
+        }
+
+        .font-kanit { font-family: 'Kanit', sans-serif; }
+        .font-prompt { font-family: 'Prompt', sans-serif; }
+        .font-mali { font-family: 'Mali', cursive; }
+        .font-chonburi { font-family: 'Chonburi', serif; font-weight: normal; }
+        .font-chakra { font-family: 'Chakra Petch', sans-serif; }
+        .font-itim { font-family: 'Itim', cursive; font-weight: normal; }
+
+        .anim-scroll-left { 
+            animation: scrollLeft var(--speed, 5s) linear infinite; 
+            left: 0;
+        }
+        .anim-scroll-right { 
+            animation: scrollRight var(--speed, 5s) linear infinite; 
+            right: 0;
+        }
+        .anim-blink { 
+            animation: blink var(--speed, 0.5s) step-end infinite; 
+            position: static;
+        }
+        .anim-static { 
+            animation: none; 
+            position: static;
+        }
+
+        @keyframes scrollLeft {
+            0% { transform: translateX(100vw); }
+            100% { transform: translateX(-100%); }
+        }
+        @keyframes scrollRight {
+            0% { transform: translateX(calc(-100%)); }
+            100% { transform: translateX(100vw); }
+        }
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        #controls-panel {
+            background: rgba(20, 20, 20, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.4s;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.9);
+            font-family: 'Kanit', sans-serif;
+        }
+        .hidden-panel {
+            transform: translateY(150%);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        input[type=range] {
+            accent-color: #ec4899;
+            height: 6px;
+            border-radius: 4px;
+        }
+        input[type=color] {
+            border: none;
+            border-radius: 8px;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            padding: 0;
+            background: transparent;
+        }
+        input[type=color]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type=color]::-webkit-color-swatch { border: 2px solid rgba(255,255,255,0.2); border-radius: 8px; }
+        
+        .emoji-btn {
+            transition: transform 0.1s, background-color 0.2s;
+        }
+        .emoji-btn:hover { background-color: rgba(255, 255, 255, 0.1); }
+        .emoji-btn:active { transform: scale(0.85); }
+        
+        /* ซ่อน Scrollbar ของแท็บอิโมจิ */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="text-white">
+
+    <!-- พื้นที่แสดงป้ายไฟ (Double Tap เพื่อเปิด/ปิดแผงควบคุม) -->
+    <div id="board-container" ondblclick="toggleControls()">
+        <div id="cheer-text" class="font-kanit anim-scroll-left" style="--neon-color: #ec4899; --speed: 6s;">
+            💖 BNK48 ✨
+        </div>
+    </div>
+
+    <!-- ข้อความแนะนำตัว -->
+    <div id="hint-text" class="absolute top-8 left-1/2 transform -translate-x-1/2 text-gray-300 text-sm md:text-base bg-black/70 px-6 py-2 rounded-full font-kanit tracking-wide pointer-events-none transition-opacity duration-500 border border-gray-700 shadow-lg z-40">
+        👆 แตะหน้าจอ 2 ครั้งเพื่อ ซ่อน/แสดง การตั้งค่า
+    </div>
+
+    <!-- แผงตั้งค่า (Control Panel) -->
+    <div id="controls-panel" class="fixed bottom-4 left-4 right-4 md:left-1/2 md:transform md:-translate-x-1/2 md:w-[650px] p-6 rounded-[2rem] z-50 max-h-[90vh] overflow-y-auto">
+        
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-pink-400 to-purple-400">
+                ✨ ตั้งค่าป้ายไฟ
+            </h2>
+            <button onclick="toggleControls()" class="text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 w-10 h-10 rounded-full flex items-center justify-center transition-colors text-lg">
+                ✕
+            </button>
+        </div>
+
+        <div class="space-y-5">
+            <div>
+                <label class="block text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">ข้อความ (Banner Text)</label>
+                <input type="text" id="input-text" value="💖 BNK48 ✨" oninput="updateBoard()" 
+                    class="w-full bg-black/60 border border-gray-600 rounded-2xl p-4 text-white focus:outline-none focus:border-pink-500 text-xl font-medium transition-colors">
+                
+                <!-- Quick Emojis -->
+                <div class="flex gap-2 mt-3 overflow-x-auto pb-2 no-scrollbar">
+                    <button onclick="insertEmoji('💖')" class="emoji-btn shrink-0 bg-gray-800/80 border border-gray-700 rounded-xl px-4 py-2 text-xl">💖</button>
+                    <button onclick="insertEmoji('🌸')" class="emoji-btn shrink-0 bg-gray-800/80 border border-gray-700 rounded-xl px-4 py-2 text-xl">🌸</button>
+                    <button onclick="insertEmoji('✨')" class="emoji-btn shrink-0 bg-gray-800/80 border border-gray-700 rounded-xl px-4 py-2 text-xl">✨</button>
+                    <button onclick="insertEmoji('👑')" class="emoji-btn shrink-0 bg-gray-800/80 border border-gray-700 rounded-xl px-4 py-2 text-xl">👑</button>
+                    <button onclick="insertEmoji('🐱')" class="emoji-btn shrink-0 bg-gray-800/80 border border-gray-700 rounded-xl px-4 py-2 text-xl">🐱</button>
+                    <button onclick="insertEmoji('🐰')" class="emoji-btn shrink-0 bg-gray-800/80 border border-gray-700 rounded-xl px-4 py-2 text-xl">🐰</button>
+                    <button onclick="insertEmoji('🔥')" class="emoji-btn shrink-0 bg-gray-800/80 border border-gray-700 rounded-xl px-4 py-2 text-xl">🔥</button>
+                    <button onclick="insertEmoji('🐧')" class="emoji-btn shrink-0 bg-gray-800/80 border border-gray-700 rounded-xl px-4 py-2 text-xl">🐧</button>
+                    <button onclick="insertEmoji('🦖')" class="emoji-btn shrink-0 bg-gray-800/80 border border-gray-700 rounded-xl px-4 py-2 text-xl">🦖</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">ฟอนต์ (Font)</label>
+                    <select id="input-font" onchange="updateBoard()" class="w-full bg-black/60 border border-gray-600 rounded-2xl p-3.5 text-white focus:outline-none focus:border-pink-500">
+                        <option value="font-kanit">Kanit (มาตรฐาน)</option>
+                        <option value="font-prompt">Prompt (ทันสมัย)</option>
+                        <option value="font-mali">Mali (น่ารัก)</option>
+                        <option value="font-chonburi">Chonburi (หรูหรา)</option>
+                        <option value="font-chakra">Chakra Petch (ไซไฟ)</option>
+                        <option value="font-itim">Itim (ขี้เล่น)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">ขนาดตัวอักษร (Size)</label>
+                    <div class="h-[52px] bg-black/30 border border-gray-600 rounded-2xl px-4 flex items-center">
+                        <span class="text-sm text-gray-400 mr-2">A</span>
+                        <input type="range" id="input-size" min="10" max="80" value="30" oninput="updateBoard()" class="w-full">
+                        <span class="text-lg text-gray-400 ml-2 font-bold">A</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">แอนิเมชัน (Motion)</label>
+                    <select id="input-effect" onchange="updateBoard()" class="w-full bg-black/60 border border-gray-600 rounded-2xl p-3.5 text-white focus:outline-none focus:border-pink-500">
+                        <option value="anim-scroll-left">เลื่อนซ้าย ⬅️</option>
+                        <option value="anim-scroll-right">เลื่อนขวา ➡️</option>
+                        <option value="anim-blink">กระพริบ ⚡</option>
+                        <option value="anim-static">อยู่นิ่ง 🛑</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs text-gray-400 mb-1.5 font-bold uppercase tracking-wider">
+                        ความเร็ว (Speed)
+                    </label>
+                    <div class="h-[52px] bg-black/30 border border-gray-600 rounded-2xl px-4 flex items-center">
+                        <span class="text-lg text-gray-400 mr-2">🐢</span>
+                        <input type="range" id="input-speed" min="1" max="15" value="8" oninput="updateBoard()" class="w-full">
+                        <span class="text-lg text-gray-400 ml-2">🐇</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-6 bg-black/30 p-4 rounded-2xl border border-gray-800">
+                <div class="flex flex-col items-center gap-1.5 cursor-pointer">
+                    <label class="text-[11px] text-gray-400 font-bold uppercase">สีป้ายไฟ</label>
+                    <input type="color" id="input-color" value="#ec4899" oninput="updateBoard()" title="สีป้ายไฟ">
+                </div>
+                <div class="h-8 w-px bg-gray-700"></div>
+                <div class="flex flex-col items-center gap-1.5 cursor-pointer">
+                    <label class="text-[11px] text-gray-400 font-bold uppercase">สีพื้นหลัง</label>
+                    <input type="color" id="input-bg" value="#000000" oninput="updateBoard()" title="สีพื้นหลัง">
+                </div>
+            </div>
+
+            <button onclick="enterCheerMode()" class="w-full mt-2 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-500 hover:to-purple-500 text-white font-bold py-4 rounded-2xl shadow-[0_0_25px_rgba(236,72,153,0.3)] transition-all active:scale-[0.98] text-lg tracking-wide border border-pink-400/30">
+                🚀 แสดงป้ายไฟเต็มจอ (FULLSCREEN)
+            </button>
+        </div>
+    </div>
+
+    <script>
+        const textElement = document.getElementById('cheer-text');
+        const boardElement = document.getElementById('board-container');
+        const panelElement = document.getElementById('controls-panel');
+        const hintElement = document.getElementById('hint-text');
+        const textInput = document.getElementById('input-text');
+
+        // ฟังก์ชันแทรกอิโมจิ
+        function insertEmoji(emoji) {
+            const cursorPosition = textInput.selectionStart;
+            const textBefore = textInput.value.substring(0, cursorPosition);
+            const textAfter = textInput.value.substring(cursorPosition);
+            
+            textInput.value = textBefore + emoji + textAfter;
+            
+            textInput.focus();
+            textInput.setSelectionRange(cursorPosition + emoji.length, cursorPosition + emoji.length);
+            
+            updateBoard();
+        }
+
+        // อัปเดตการแสดงผลหลัก
+        function updateBoard() {
+            // อัปเดตข้อความ
+            textElement.innerText = textInput.value;
+            
+            // อัปเดตขนาดตัวอักษร
+            const sizeVal = document.getElementById('input-size').value;
+            textElement.style.fontSize = `${sizeVal}vh`;
+            
+            // อัปเดตสี
+            const neonColor = document.getElementById('input-color').value;
+            textElement.style.setProperty('--neon-color', neonColor);
+            boardElement.style.backgroundColor = document.getElementById('input-bg').value;
+
+            // อัปเดตฟอนต์
+            const fontClass = document.getElementById('input-font').value;
+            textElement.classList.remove('font-kanit', 'font-prompt', 'font-mali', 'font-chonburi', 'font-chakra', 'font-itim');
+            textElement.classList.add(fontClass);
+
+            // อัปเดตเอฟเฟกต์
+            const effect = document.getElementById('input-effect').value;
+            textElement.classList.remove('anim-scroll-left', 'anim-scroll-right', 'anim-blink', 'anim-static');
+            // Force reflow เพื่อรีเซ็ตแอนิเมชัน
+            void textElement.offsetWidth;
+            textElement.classList.add(effect);
+
+            // คำนวณความเร็ว (ยิ่งค่าเยอะ ยิ่งเร็ว -> ใช้เวลาน้อยลง)
+            const speedVal = parseInt(document.getElementById('input-speed').value);
+            let duration = "5s";
+            
+            if (effect === 'anim-blink') {
+                duration = ((16 - speedVal) * 0.1) + "s";
+            } else {
+                duration = ((17 - speedVal) * 0.8) + "s"; 
+            }
+            textElement.style.setProperty('--speed', duration);
+        }
+
+        // ซ่อน/แสดง เมนูควบคุม
+        function toggleControls() {
+            if (panelElement.classList.contains('hidden-panel')) {
+                panelElement.classList.remove('hidden-panel');
+                hintElement.style.opacity = '1';
+            } else {
+                panelElement.classList.add('hidden-panel');
+                hintElement.style.opacity = '0';
+            }
+        }
+
+        // เข้าสู่โหมดเต็มจอ
+        async function enterCheerMode() {
+            if (!panelElement.classList.contains('hidden-panel')) {
+                toggleControls(); // ซ่อนเมนูก่อน
+            }
+            
+            if (!document.fullscreenElement) {
+                try {
+                    if (document.documentElement.requestFullscreen) {
+                        await document.documentElement.requestFullscreen();
+                    } else if (document.documentElement.webkitRequestFullscreen) {
+                        await document.documentElement.webkitRequestFullscreen();
+                    }
+                } catch (err) {
+                    console.warn("Fullscreen API is not supported on this device/browser.");
+                }
+            }
+        }
+
+        // แสดงเมนูกลับมาเมื่อกดออกโหมดเต็มจอ (ESC หรือปุ่ม Back)
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                if (panelElement.classList.contains('hidden-panel')) {
+                    toggleControls();
+                }
+            }
+        });
+
+        // Initialize board
+        window.onload = updateBoard;
+    </script>
+</body>
+</html>
